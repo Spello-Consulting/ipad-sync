@@ -1,0 +1,1 @@
+"""ipad-sync package initializer."""
