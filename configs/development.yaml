@@ -2,7 +2,6 @@
 
 General:
   AppName: ipad-sync
-  CheckInterval: 4
 
 Files:
   LogfileName: logs/logfile.log
@@ -11,12 +10,10 @@ Files:
   LogfileVerbosity: debug
   ConsoleVerbosity: debug
 
-Email:
-  EnableEmail: True
-  SubjectPrefix: "[Dev ipad-sync]: "
+AppleTV:
+  Playlist: "iPad Sync"
+  MediaFolder: "/Volumes/Data_IT/Multimedia/Video"
 
-
-HeartbeatMonitor:
-  Enable: True
-  WebsiteURL: https://uptime.betterstack.com/api/v1/heartbeat/zcsNtnEQHRDNWJENvcZc94fx
-  HeartbeatTimeout: 5
+iPad:
+  AppName: "Infuse"
+  MinimumFreeSpaceGB: 1

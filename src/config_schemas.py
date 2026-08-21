@@ -13,7 +13,24 @@ class ConfigSchema:
                 "nullable": True,
                 "schema": {
                     "AppName": {"type": "string", "required": False, "nullable": True},
-                    "CheckInterval": {"type": "number", "required": False, "nullable": True},
+                },
+            },
+            "AppleTV": {
+                "type": "dict",
+                "required": True,
+                "nullable": False,
+                "schema": {
+                    "Playlist": {"type": "string", "required": True},
+                    "MediaFolder": {"type": "string", "required": True},
+                },
+            },
+            "iPad": {
+                "type": "dict",
+                "required": True,
+                "nullable": False,
+                "schema": {
+                    "AppName": {"type": "string", "required": True},
+                    "MinimumFreeSpaceGB": {"type": "integer", "required": False, "nullable": True},
                 },
             },
         }

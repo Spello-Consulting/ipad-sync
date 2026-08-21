@@ -5,7 +5,6 @@ import os
 import platform
 import sys
 from pathlib import Path
-from threading import Event
 
 from dotenv import load_dotenv
 from sc_foundation import (
@@ -34,7 +33,7 @@ def parse_command_line_args() -> dict[str, str | None]:
 Examples:
   python main.py
   python main.py --config /path/to/config.yaml
-  python main.py --homedir /opt/lightingcontrol --config config.yaml
+  python main.py --homedir /opt/ipad-sync --config config.yaml
         """
     )
 
@@ -122,10 +121,7 @@ def initialize_config_and_logging(cmd_args) -> tuple[SCConfigManager, SCLogger]:
         sys.exit(1)
 
     try:
-        heartbeat_config = config.get("HeartbeatMonitor")
-        if not isinstance(heartbeat_config, dict) or not heartbeat_config.get("Enabled", False):
-            heartbeat_config = None
-        logger = SCLogger(config.get_logger_settings(), heartbeat_config=heartbeat_config)
+        logger = SCLogger(config.get_logger_settings(), heartbeat_config=None)
     except RuntimeError as e:
         print(f"Logger initialisation error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -136,10 +132,6 @@ def initialize_config_and_logging(cmd_args) -> tuple[SCConfigManager, SCLogger]:
         logger.log_message(f"Configuration file: {cmd_args['config_file']}", "debug")
         if cmd_args["homedir"]:
             logger.log_message(f"Home directory: {cmd_args['homedir']}", "debug")
-
-        email_settings = config.get_email_settings()
-        if email_settings is not None:
-            logger.register_email_settings(email_settings)
 
         if logger.get_fatal_error():
             logger.log_message("Application has recovered after a prior fatal failure.", "summary")
@@ -154,32 +146,11 @@ def main():
     load_dotenv()  # Load .env file if present (no-op if absent)
     print(f"Starting ipad-sync on {platform.system()}")
 
-    wake_event = Event()   # Wakes the controller loop from sleep (e.g. on webhook)
-    stop_event = Event()   # Signals all threads to stop
-
     cmd_args = parse_command_line_args()
 
     config, logger = initialize_config_and_logging(cmd_args)
 
-    # Start main loop here
-    try:
-        check_interval = config.get("General", "CheckInterval", default=4) or 4
-        assert isinstance(check_interval, int)
-        i = 0
-        while not stop_event.is_set() and i < check_interval:
-            logger.log_message(f"Main loop iteration {i + 1}.", "debug")
-            logger.ping_heartbeat()
-            stop_event.wait(timeout=1.0)    # Sleep for 1 second or until stop_event is set
-            i += 1
-    except KeyboardInterrupt:
-        logger.log_message("KeyboardInterrupt received. Shutting down...", "summary")
-        stop_event.set()
-        wake_event.set()
-    except (RuntimeError, TypeError) as e:
-        logger.log_fatal_error(f"Fatal error detected: {e}")
-        sys.exit(1)
-    finally:
-        logger.log_message("ipad-sync application stopped.", "summary")
+    # Start main code here
 
 
 if __name__ == "__main__":
