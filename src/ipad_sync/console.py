@@ -36,6 +36,46 @@ def format_size(num_bytes: int) -> str:
     return f"{num_bytes} B"
 
 
+def format_duration(seconds: float) -> str:
+    """Format a duration in seconds as ``h:mm:ss`` or ``mm:ss``.
+
+    Args:
+        seconds: The duration in seconds.
+
+    Returns:
+        A compact clock-style string (e.g. ``"3:07"`` or ``"1:02:09"``).
+    """
+    total = max(int(seconds), 0)
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+def format_progress(done_bytes: int, total_bytes: int, elapsed_seconds: float) -> str:
+    """Format copy progress with percentage, throughput and an ETA.
+
+    Args:
+        done_bytes: Bytes transferred so far.
+        total_bytes: Total bytes to transfer.
+        elapsed_seconds: Seconds elapsed since the transfer started.
+
+    Returns:
+        A one-line progress string.
+    """
+    pct = (done_bytes / total_bytes * 100) if total_bytes else 100.0
+    parts = [f"{pct:.0f}%  {format_size(done_bytes)} / {format_size(total_bytes)}"]
+    if done_bytes and elapsed_seconds > 0:
+        rate = done_bytes / elapsed_seconds
+        if rate > 0:
+            remaining = max(total_bytes - done_bytes, 0)
+            parts.append(
+                f"~{format_duration(remaining / rate)} left ({format_size(int(rate))}/s)"
+            )
+    return "  ".join(parts)
+
+
 def render_app_list(apps: list[AppInfo]) -> str:
     """Render installed apps as an aligned two-column table.
 

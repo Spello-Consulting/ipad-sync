@@ -7,6 +7,8 @@ import pytest
 from ipad_sync.compare import compare
 from ipad_sync.console import (
     confirm,
+    format_duration,
+    format_progress,
     format_size,
     render_app_list,
     render_compare,
@@ -113,3 +115,32 @@ def test_render_compare_summarises_actions():
     assert "+ new.m4v" in rendered
     assert "- old.m4v" in rendered
     assert "! gone.m4v" in rendered
+
+
+# -- progress formatting ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [(0, "0:00"), (9, "0:09"), (75, "1:15"), (3600, "1:00:00"), (3725, "1:02:05")],
+)
+def test_format_duration(seconds, expected):
+    """Durations render as mm:ss or h:mm:ss."""
+    assert format_duration(seconds) == expected
+
+
+def test_format_progress_includes_percent_and_eta():
+    """Progress shows percentage, totals and an ETA once underway."""
+    text = format_progress(
+        done_bytes=50 * 1024**2, total_bytes=100 * 1024**2, elapsed_seconds=5
+    )
+    assert "50%" in text
+    assert "left" in text
+    assert "/s" in text
+
+
+def test_format_progress_no_eta_before_any_bytes():
+    """With nothing transferred yet there is no ETA (avoids divide-by-zero)."""
+    text = format_progress(done_bytes=0, total_bytes=1000, elapsed_seconds=0)
+    assert "0%" in text
+    assert "left" not in text

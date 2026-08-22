@@ -68,7 +68,7 @@ Commands:
 | `list-playlist` | ✅ Phase 2 | List the Apple TV playlist contents |
 | `list-ipad` | ✅ Phase 2 | List the Infuse Documents contents |
 | `compare` | ✅ Phase 2 | Compare playlist vs iPad by relative path |
-| `to-ipad` | ⏳ Phase 3 | Mirror playlist media onto the iPad |
+| `to-ipad` | ✅ Phase 3 | Mirror playlist media onto the iPad |
 | `to-playlist` | ⏳ Phase 4 | Rebuild the playlist from the iPad |
 
 Flags: `--simulate` runs against a local folder instead of an iPad (see

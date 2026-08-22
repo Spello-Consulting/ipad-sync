@@ -20,6 +20,7 @@ from ipad_sync.commands import (
     cmd_ipad_apps,
     cmd_list_ipad,
     cmd_list_playlist,
+    cmd_to_ipad,
 )
 from ipad_sync.device import IPadDevice
 from ipad_sync.startup import StartupChecker, StartupError
@@ -39,10 +40,16 @@ COMMANDS = (
 )
 
 # Commands implemented so far (others report "not yet implemented").
-IMPLEMENTED_COMMANDS = frozenset({"ipad-apps", "list-playlist", "list-ipad", "compare"})
+IMPLEMENTED_COMMANDS = frozenset({
+    "ipad-apps",
+    "list-playlist",
+    "list-ipad",
+    "compare",
+    "to-ipad",
+})
 
 # Commands that need a connected Documents storage session.
-STORAGE_COMMANDS = frozenset({"list-ipad", "compare"})
+STORAGE_COMMANDS = frozenset({"list-ipad", "compare", "to-ipad"})
 
 
 def parse_command_line_args() -> dict[str, str | bool | None]:
@@ -283,6 +290,17 @@ def run_command(
                     cmd_list_ipad(storage, log)
                 elif command == "compare":
                     cmd_compare(playlist, storage, log)
+                elif command == "to-ipad":
+                    min_free_gb = int(
+                        config.get("iPad", "MinimumFreeSpaceGB", default=1) or 1
+                    )
+                    cmd_to_ipad(
+                        playlist,
+                        storage,
+                        log,
+                        min_free_gb=min_free_gb,
+                        assume_yes=bool(cmd_args["assume_yes"]),
+                    )
     finally:
         if device is not None:
             device.close()
