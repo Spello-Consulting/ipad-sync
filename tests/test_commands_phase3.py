@@ -150,3 +150,27 @@ def test_to_ipad_skips_missing_source(tmp_path, media):
 
     assert ok is True
     assert rels == ["here.m4v"]  # missing source not copied
+
+
+def test_to_ipad_stops_on_interrupt(tmp_path, media):
+    """to-ipad stops between files when should_abort turns true, leaving a clean state."""
+    a = media("a.m4v", 10)
+    b = media("b.m4v", 10)
+    calls = {"n": 0}
+
+    def should_abort() -> bool:
+        calls["n"] += 1
+        return calls["n"] > 1  # allow the first copy, abort before the second
+
+    with SimulationStorageManager(tmp_path / "docs") as storage:
+        ok = cmd_to_ipad(
+            FakePlaylist(items=[a, b]),
+            storage,
+            lambda *_: None,
+            assume_yes=True,
+            should_abort=should_abort,
+        )
+        rels = [i.rel_path for i in storage.list_files()]
+
+    assert ok is False
+    assert rels == ["a.m4v"]  # only the first file was copied; no partial second file

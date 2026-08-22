@@ -42,6 +42,7 @@ class MediaItem:
         abs_path: Optional absolute path on the current machine, when known.
         missing: True when the item is referenced (e.g. by the playlist) but the
             underlying file does not exist on disk.
+        show: TV show name for TV-episode tracks; ``None`` for movies/unknown.
     """
 
     rel_path: str
@@ -49,13 +50,19 @@ class MediaItem:
     name: str | None = None
     abs_path: str | None = None
     missing: bool = False
+    show: str | None = None
 
     @property
     def display_name(self) -> str:
-        """Return ``name`` if set, otherwise the basename of ``rel_path``."""
-        if self.name:
-            return self.name
-        return self.rel_path.rsplit("/", 1)[-1]
+        """A friendly identifier: ``"Show - Episode"`` for TV, else the name.
+
+        Uses ``name`` (falling back to the basename of ``rel_path``), prefixed
+        with the TV ``show`` when present.
+        """
+        base = self.name or self.rel_path.rsplit("/", 1)[-1]
+        if self.show:
+            return f"{self.show} - {base}"
+        return base
 
 
 @dataclass
@@ -83,3 +90,32 @@ class CompareResult:
     def has_changes(self) -> bool:
         """True when applying this result would add or remove any file."""
         return bool(self.to_copy or self.to_delete)
+
+
+@dataclass
+class PlaylistUpdate:
+    """The changes needed to make the Apple TV playlist mirror the iPad.
+
+    All lists are keyed on relative path. Expressed from the playlist's point of
+    view: what would be added to or removed from the playlist.
+
+    Attributes:
+        to_add: iPad files not in the playlist whose media exists on this Mac
+            (``abs_path`` is the full path to add).
+        to_remove: Playlist tracks to drop — either absent from the iPad or
+            missing from this Mac's media folder.
+        in_sync: Tracks already correct (on the iPad, in the playlist, present
+            on this Mac); left untouched to preserve play order.
+        missing_on_mac: iPad files that would be added but whose media is absent
+            from this Mac's media folder, so they are skipped.
+    """
+
+    to_add: list[MediaItem] = field(default_factory=list)
+    to_remove: list[MediaItem] = field(default_factory=list)
+    in_sync: list[MediaItem] = field(default_factory=list)
+    missing_on_mac: list[MediaItem] = field(default_factory=list)
+
+    @property
+    def has_changes(self) -> bool:
+        """True when applying this update would add or remove any track."""
+        return bool(self.to_add or self.to_remove)

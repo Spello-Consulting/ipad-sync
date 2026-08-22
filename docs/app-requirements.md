@@ -45,9 +45,10 @@ When the ipad-sync starts it must perform the following checks first, regardless
 
 1. Confirm the iPad is connected via USB (`pymobiledevice3 usbmux list`)
 2. Confirm that there is a trust relationship between the desktop running ipad-sync and the ipad (`pymobiledevice3 lockdown pair`)
-3. Confirm that the media folder (AppleTV.MediaFolder config option) exists and is accessible. 
-4. Checks to see if the Apple TV playlist already exists (it's OK if it doesn't). If it exists, make sure it's accessible
-5. Lookup the Bundle ID for the iPad app name specified in the iPad.AppName config option. This could be done using the  `pymobiledevice3 apps list` command to do this. ipad-sync would need to extract the Bundle ID key and CFBundleDisplayName key value from the command's output for each app. This data should be saved for all apps so thatit's avalable to the List iPad Apps command (see below.)
+3. Checks the negiotiated speed of the USB connection using ioreg. Report the speed in MB/s and G/Mbps. If speed is USB 2.0 or slower, show a warning. 
+4. Confirm that the media folder (AppleTV.MediaFolder config option) exists and is accessible. 
+5. Checks to see if the Apple TV playlist already exists (it's OK if it doesn't). If it exists, make sure it's accessible
+6. Lookup the Bundle ID for the iPad app name specified in the iPad.AppName config option. This could be done using the  `pymobiledevice3 apps list` command to do this. ipad-sync would need to extract the Bundle ID key and CFBundleDisplayName key value from the command's output for each app. This data should be saved for all apps so thatit's avalable to the List iPad Apps command (see below.)
 
 Sample partial output from `pymobiledevice3 apps list`
 ```

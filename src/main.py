@@ -21,8 +21,10 @@ from ipad_sync.commands import (
     cmd_list_ipad,
     cmd_list_playlist,
     cmd_to_ipad,
+    cmd_to_playlist,
 )
 from ipad_sync.device import IPadDevice
+from ipad_sync.interrupt import handle_interrupts
 from ipad_sync.startup import StartupChecker, StartupError
 from ipad_sync.storage import SimulationStorageManager, StorageManager
 from ipad_sync.storage.ipad import IPadStorageManager
@@ -46,10 +48,11 @@ IMPLEMENTED_COMMANDS = frozenset({
     "list-ipad",
     "compare",
     "to-ipad",
+    "to-playlist",
 })
 
 # Commands that need a connected Documents storage session.
-STORAGE_COMMANDS = frozenset({"list-ipad", "compare", "to-ipad"})
+STORAGE_COMMANDS = frozenset({"list-ipad", "compare", "to-ipad", "to-playlist"})
 
 
 def parse_command_line_args() -> dict[str, str | bool | None]:
@@ -285,7 +288,7 @@ def run_command(
                 device=device,
                 bundle_id=startup.bundle_id,
             )
-            with storage:
+            with storage, handle_interrupts(log) as interrupt:
                 if command == "list-ipad":
                     cmd_list_ipad(storage, log)
                 elif command == "compare":
@@ -300,6 +303,16 @@ def run_command(
                         log,
                         min_free_gb=min_free_gb,
                         assume_yes=bool(cmd_args["assume_yes"]),
+                        should_abort=lambda: bool(interrupt),
+                    )
+                elif command == "to-playlist":
+                    cmd_to_playlist(
+                        playlist,
+                        storage,
+                        media_folder,
+                        log,
+                        assume_yes=bool(cmd_args["assume_yes"]),
+                        should_abort=lambda: bool(interrupt),
                     )
     finally:
         if device is not None:

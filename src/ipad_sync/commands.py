@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ipad_sync.compare import compare
+from ipad_sync.compare import compare, plan_playlist_update
 from ipad_sync.console import (
     confirm,
     format_progress,
@@ -19,6 +19,7 @@ from ipad_sync.console import (
     render_app_list,
     render_compare,
     render_media_list,
+    render_playlist_update,
 )
 
 if TYPE_CHECKING:
@@ -31,6 +32,15 @@ if TYPE_CHECKING:
 
 # 1 GiB, used to convert the configured minimum-free-space (GB) to bytes.
 _BYTES_PER_GB = 1024**3
+
+
+def _never_abort() -> bool:
+    """Default ``should_abort`` predicate: never requests a stop.
+
+    Returns:
+        Always ``False``.
+    """
+    return False
 
 
 def _read_playlist(
@@ -144,25 +154,42 @@ def _apply_deletes(
     result: CompareResult,
     storage: StorageManager,
     log: Callable[[str, str], None],
-) -> None:
-    """Remove the iPad files scheduled for deletion (deletes run before copies)."""
+    should_abort: Callable[[], bool],
+) -> bool:
+    """Remove the iPad files scheduled for deletion (deletes run before copies).
+
+    Returns:
+        True if all deletions completed; False if interrupted.
+    """
     if not result.to_delete:
-        return
+        return True
     total = len(result.to_delete)
     log(f"Deleting {total} file(s) from the iPad...", "summary")
     for index, item in enumerate(result.to_delete, start=1):
+        if should_abort():
+            log(f"Interrupted before deleting {item.rel_path}; stopping.", "warning")
+            return False
         log(f"  [{index}/{total}] removing {item.rel_path}", "detailed")
         storage.remove_file(item.rel_path)
+    return True
 
 
 def _apply_copies(
     result: CompareResult,
     storage: StorageManager,
     log: Callable[[str, str], None],
-) -> None:
-    """Copy the playlist files scheduled for addition, reporting progress."""
+    should_abort: Callable[[], bool],
+) -> bool:
+    """Copy the playlist files scheduled for addition, reporting progress.
+
+    The interrupt flag is checked between files so an in-flight transfer always
+    finishes and no partial file is left behind.
+
+    Returns:
+        True if all copies completed; False if interrupted.
+    """
     if not result.to_copy:
-        return
+        return True
     total = len(result.to_copy)
     total_bytes = sum(item.size for item in result.to_copy)
     log(
@@ -173,6 +200,11 @@ def _apply_copies(
     done_bytes = 0
     start = time.monotonic()
     for index, item in enumerate(result.to_copy, start=1):
+        if should_abort():
+            log(
+                f"Interrupted after {index - 1} of {total} copies; stopping.", "warning"
+            )
+            return False
         if item.abs_path is None:
             log(
                 f"  [{index}/{total}] skipping {item.rel_path}: no source path",
@@ -188,6 +220,7 @@ def _apply_copies(
             "  " + format_progress(done_bytes, total_bytes, time.monotonic() - start),
             "summary",
         )
+    return True
 
 
 def cmd_to_ipad(
@@ -197,6 +230,7 @@ def cmd_to_ipad(
     *,
     min_free_gb: int = 1,
     assume_yes: bool = False,
+    should_abort: Callable[[], bool] = _never_abort,
 ) -> bool:
     """Mirror the Apple TV playlist media onto the iPad.
 
@@ -210,10 +244,11 @@ def cmd_to_ipad(
         log: ``(message, verbosity)`` logging callable.
         min_free_gb: Minimum free space to preserve on the iPad, in GB.
         assume_yes: When True, skip the confirmation prompt.
+        should_abort: Predicate polled between files to stop early (Ctrl-C).
 
     Returns:
         True if the sync was applied (or nothing needed doing); False if it was
-        aborted (empty playlist, insufficient space, or the user declined).
+        aborted (empty playlist, insufficient space, user declined, or interrupted).
     """
     playlist_items = _read_playlist(playlist, log)
     if not playlist_items:
@@ -246,9 +281,10 @@ def cmd_to_ipad(
         return False
 
     if result.missing_source:
+        names = ", ".join(item.display_name for item in result.missing_source)
         log(
-            f"{len(result.missing_source)} playlist file(s) are missing from the media "
-            "folder and will be skipped.",
+            f"{len(result.missing_source)} playlist file(s) missing from the media "
+            f"folder and will be skipped: {names}",
             "warning",
         )
 
@@ -263,7 +299,88 @@ def cmd_to_ipad(
         log("Aborted by user.", "summary")
         return False
 
-    _apply_deletes(result, storage, log)
-    _apply_copies(result, storage, log)
+    if not _apply_deletes(result, storage, log, should_abort):
+        log("Sync interrupted during deletions; copies skipped.", "warning")
+        return False
+    if not _apply_copies(result, storage, log, should_abort):
+        log(
+            "Sync interrupted; some files were not copied. Re-run to finish.", "warning"
+        )
+        return False
     log("Sync to iPad complete.", "summary")
+    return True
+
+
+def cmd_to_playlist(
+    playlist: PlaylistService,
+    storage: StorageManager,
+    media_folder: Path,
+    log: Callable[[str, str], None],
+    *,
+    assume_yes: bool = False,
+    should_abort: Callable[[], bool] = _never_abort,
+) -> bool:
+    """Rebuild the Apple TV playlist to mirror the iPad's contents.
+
+    Does not copy media to the Mac — it only edits the playlist. Existing correct
+    tracks are left in place to preserve play order; tracks absent from the iPad
+    (or missing from this Mac's media folder) are removed, and iPad files whose
+    media exists locally are added by full path. The playlist is created if absent.
+
+    Args:
+        playlist: The playlist service to read and write.
+        storage: A connected storage manager.
+        media_folder: The Apple TV media root on this machine.
+        log: ``(message, verbosity)`` logging callable.
+        assume_yes: When True, skip the confirmation prompt.
+        should_abort: Predicate polled before mutating steps to stop early.
+
+    Returns:
+        True if the update was applied (or nothing needed doing); False if it was
+        aborted (user declined or interrupted).
+    """
+    ipad_items = _read_ipad(storage, log)
+    playlist_items = _read_playlist(playlist, log)
+    update = plan_playlist_update(ipad_items, playlist_items, media_folder)
+    log(render_playlist_update(update), "summary")
+
+    if update.missing_on_mac:
+        log(
+            f"{len(update.missing_on_mac)} iPad file(s) are missing from the media folder "
+            "and will not be added to the playlist.",
+            "warning",
+        )
+
+    if not update.has_changes:
+        log("Playlist already matches the iPad; nothing to do.", "summary")
+        return True
+
+    if not confirm(
+        f"Proceed? {len(update.to_remove)} to remove, {len(update.to_add)} to add.",
+        assume_yes,
+    ):
+        log("Aborted by user.", "summary")
+        return False
+
+    if should_abort():
+        log("Interrupted before applying changes.", "warning")
+        return False
+    if update.to_remove:
+        log(
+            f"Removing {len(update.to_remove)} track(s) from the playlist...", "summary"
+        )
+        remove_paths = [item.abs_path for item in update.to_remove if item.abs_path]
+        removed = playlist.remove_tracks(remove_paths)
+        log(f"Removed {removed} track(s).", "summary")
+
+    if should_abort():
+        log("Interrupted after removals; additions skipped.", "warning")
+        return False
+    if update.to_add:
+        log(f"Adding {len(update.to_add)} track(s) to the playlist...", "summary")
+        add_paths = [item.abs_path for item in update.to_add if item.abs_path]
+        added = playlist.add_tracks(add_paths)
+        log(f"Added {added} track(s).", "summary")
+
+    log("Playlist update complete.", "summary")
     return True

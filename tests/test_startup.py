@@ -5,6 +5,7 @@ from fakes import FakeDevice, FakePlaylist
 
 from ipad_sync.models import AppInfo
 from ipad_sync.startup import StartupChecker, StartupError
+from ipad_sync.usb_speed import UsbLinkSpeed
 
 
 def _make_checker(
@@ -15,6 +16,8 @@ def _make_checker(
     app_name="Infuse",
     bundle_id=None,
     simulate=False,
+    log=None,
+    usb_speed_probe=lambda _serial: None,
 ):
     media = tmp_path / "media"
     media.mkdir(exist_ok=True)
@@ -25,6 +28,8 @@ def _make_checker(
         device=device if device is not None else FakeDevice(),
         playlist=playlist if playlist is not None else FakePlaylist(exists=False),
         simulate=simulate,
+        log=log,
+        usb_speed_probe=usb_speed_probe,
     )
 
 
@@ -76,6 +81,7 @@ def test_missing_media_folder_fails(tmp_path):
         device=FakeDevice(apps=[AppInfo("com.firecore.infuse", "Infuse")]),
         playlist=FakePlaylist(),
         simulate=False,
+        usb_speed_probe=lambda _s: None,
     )
     with pytest.raises(StartupError, match="does not exist"):
         checker.run()
@@ -133,3 +139,53 @@ def test_simulate_skips_device_checks(tmp_path):
     assert result.apps == []
     assert result.bundle_id == "com.firecore.infuse"
     assert result.playlist_exists is True
+
+
+# -- USB link-speed check --------------------------------------------------------
+
+
+def test_usb_speed_warns_when_slow(tmp_path):
+    """A USB 2.0 link produces a warning message."""
+    messages: list[tuple[str, str]] = []
+    device = FakeDevice(apps=[AppInfo("com.firecore.infuse", "Infuse")])
+    checker = _make_checker(
+        tmp_path,
+        device=device,
+        log=lambda msg, level: messages.append((msg, level)),
+        usb_speed_probe=lambda _s: UsbLinkSpeed(2, "High Speed (USB 2.0)", 480.0),
+    )
+    checker.run()
+
+    warnings = [m for m, level in messages if level == "warning"]
+    assert any(
+        "USB link is slow" in m and "480 Mbps" in m and "60 MB/s" in m for m in warnings
+    )
+
+
+def test_usb_speed_reports_when_fast(tmp_path):
+    """A USB 3 link is reported at summary level with no warning."""
+    messages: list[tuple[str, str]] = []
+    device = FakeDevice(apps=[AppInfo("com.firecore.infuse", "Infuse")])
+    checker = _make_checker(
+        tmp_path,
+        device=device,
+        log=lambda msg, level: messages.append((msg, level)),
+        usb_speed_probe=lambda _s: UsbLinkSpeed(
+            4, "SuperSpeed+ (USB 3.1 Gen 2)", 10000.0
+        ),
+    )
+    checker.run()
+
+    assert any(
+        "USB link speed" in m and "10 Gbps" in m and level == "summary"
+        for m, level in messages
+    )
+    assert not any(level == "warning" for _m, level in messages)
+
+
+def test_usb_speed_unknown_is_skipped(tmp_path):
+    """An undeterminable speed does not abort or warn."""
+    device = FakeDevice(apps=[AppInfo("com.firecore.infuse", "Infuse")])
+    checker = _make_checker(tmp_path, device=device, usb_speed_probe=lambda _s: None)
+    # Should not raise.
+    assert checker.run().bundle_id == "com.firecore.infuse"

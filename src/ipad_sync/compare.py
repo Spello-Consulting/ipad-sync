@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ipad_sync.models import CompareResult
+from ipad_sync.models import CompareResult, MediaItem, PlaylistUpdate
 
 if TYPE_CHECKING:
-    from ipad_sync.models import MediaItem
+    from pathlib import Path
 
 
 def compare(
@@ -50,3 +50,52 @@ def compare(
         item for item in ipad_items if item.rel_path not in playlist_rels
     ]
     return result
+
+
+def plan_playlist_update(
+    ipad_items: list[MediaItem],
+    playlist_items: list[MediaItem],
+    media_folder: Path,
+) -> PlaylistUpdate:
+    """Plan the changes to make the playlist mirror the iPad.
+
+    A track is kept only when it is present on the iPad *and* its media exists in
+    this Mac's media folder. iPad files not yet in the playlist are added when
+    their media exists locally (full path = ``media_folder`` + relative path);
+    playlist tracks that are absent from the iPad or missing from the media
+    folder are removed.
+
+    Args:
+        ipad_items: Files present in the iPad app's Documents.
+        playlist_items: Tracks currently in the Apple TV playlist (``missing``
+            reflects whether each track's file exists in the media folder).
+        media_folder: The Apple TV media root on this machine.
+
+    Returns:
+        A :class:`PlaylistUpdate` describing the additions and removals.
+    """
+    ipad_rels = {item.rel_path for item in ipad_items}
+    playlist_rels = {item.rel_path for item in playlist_items}
+
+    update = PlaylistUpdate()
+
+    for item in ipad_items:
+        if item.rel_path in playlist_rels:
+            continue  # existing track; decided in the playlist loop below
+        abs_path = media_folder / item.rel_path
+        if abs_path.is_file():
+            update.to_add.append(
+                MediaItem(
+                    rel_path=item.rel_path, size=item.size, abs_path=str(abs_path)
+                )
+            )
+        else:
+            update.missing_on_mac.append(item)
+
+    for track in playlist_items:
+        if track.rel_path in ipad_rels and not track.missing:
+            update.in_sync.append(track)
+        else:
+            update.to_remove.append(track)
+
+    return update

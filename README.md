@@ -69,11 +69,14 @@ Commands:
 | `list-ipad` | ✅ Phase 2 | List the Infuse Documents contents |
 | `compare` | ✅ Phase 2 | Compare playlist vs iPad by relative path |
 | `to-ipad` | ✅ Phase 3 | Mirror playlist media onto the iPad |
-| `to-playlist` | ⏳ Phase 4 | Rebuild the playlist from the iPad |
+| `to-playlist` | ✅ Phase 4 | Rebuild the playlist from the iPad |
 
 Flags: `--simulate` runs against a local folder instead of an iPad (see
 `General.SimulationMode`/`SimulationRoot` in the config); `--yes` skips
 confirmation prompts.
+
+Press **Ctrl-C** during a `to-ipad` transfer to stop cleanly: the in-flight file
+finishes and no partial file is left behind, so re-running resumes safely.
 
 ## Development
 

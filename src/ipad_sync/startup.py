@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ipad_sync.device import DeviceError
+from ipad_sync.usb_speed import probe_usb_link_speed
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 
     from ipad_sync.models import AppInfo
     from ipad_sync.protocols import DeviceProbe, PlaylistProbe
+    from ipad_sync.usb_speed import UsbLinkSpeed
 
 
 class StartupError(Exception):
@@ -57,6 +59,7 @@ class StartupChecker:
         playlist: PlaylistProbe,
         simulate: bool,
         log: Callable[[str, str], None] | None = None,
+        usb_speed_probe: Callable[[str | None], UsbLinkSpeed | None] | None = None,
     ) -> None:
         """Create the checker.
 
@@ -69,6 +72,8 @@ class StartupChecker:
             playlist: Service used to probe playlist existence.
             simulate: Whether to skip device-dependent checks.
             log: Optional ``(message, verbosity)`` logging callable.
+            usb_speed_probe: Callable returning the negotiated USB link speed for
+                a serial (defaults to the real ``ioreg`` probe).
         """
         self._app_name = app_name
         self._media_folder = media_folder
@@ -77,10 +82,16 @@ class StartupChecker:
         self._playlist = playlist
         self._simulate = simulate
         self._log = log
+        self._usb_speed_probe = usb_speed_probe
+        self._serial: str | None = None
 
     def _info(self, message: str) -> None:
         if self._log is not None:
             self._log(message, "summary")
+
+    def _warn(self, message: str) -> None:
+        if self._log is not None:
+            self._log(message, "warning")
 
     def run(self) -> StartupResult:
         """Run all startup checks in order.
@@ -96,6 +107,7 @@ class StartupChecker:
         else:
             self._check_usb()
             self._check_trust()
+            self._check_usb_speed()
             result.apps = self._load_apps()
             result.bundle_id = self._resolve_bundle_id(result.apps)
 
@@ -126,6 +138,7 @@ class StartupChecker:
         if not serials:
             msg = "No iPad connected over USB. Connect the iPad and retry."
             raise StartupError(msg)
+        self._serial = serials[0]
         self._info(f"iPad detected over USB (serial: {serials[0]}).")
 
     def _check_trust(self) -> None:
@@ -141,6 +154,25 @@ class StartupChecker:
             msg = f"Could not establish trust with the iPad: {exc}"
             raise StartupError(msg) from exc
         self._info("Trust relationship with the iPad confirmed.")
+
+    def _check_usb_speed(self) -> None:
+        """Check 2b: report the negotiated USB link speed (informational).
+
+        Never aborts the run — an undeterminable speed is simply skipped. Warns
+        when the link is USB 2.0 or slower, which throttles transfers.
+        """
+        probe = self._usb_speed_probe or probe_usb_link_speed
+        speed = probe(self._serial)
+        if speed is None:
+            self._info("USB link speed could not be determined (skipping).")
+            return
+        if speed.is_slow:
+            self._warn(
+                f"USB link is slow: {speed.summary}. Transfers will be slow — "
+                "use a USB 3.1 Gen 2 / Thunderbolt cable for full speed."
+            )
+        else:
+            self._info(f"USB link speed: {speed.summary}.")
 
     def _check_media_folder(self) -> None:
         """Check 3: the media folder exists and is readable.

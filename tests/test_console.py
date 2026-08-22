@@ -13,8 +13,9 @@ from ipad_sync.console import (
     render_app_list,
     render_compare,
     render_media_list,
+    render_playlist_update,
 )
-from ipad_sync.models import AppInfo, MediaItem
+from ipad_sync.models import AppInfo, MediaItem, PlaylistUpdate
 
 
 @pytest.mark.parametrize(
@@ -105,7 +106,7 @@ def test_render_compare_summarises_actions():
     """The compare summary lists copies, deletions and missing sources."""
     playlist = [
         MediaItem(rel_path="new.m4v", size=2048, name="new"),
-        MediaItem(rel_path="gone.m4v", size=0, name="gone", missing=True),
+        MediaItem(rel_path="gone.m4v", size=0, name="Gone Pilot", missing=True),
     ]
     ipad = [MediaItem(rel_path="old.m4v", size=100)]
     rendered = render_compare(compare(playlist, ipad))
@@ -114,7 +115,7 @@ def test_render_compare_summarises_actions():
     assert "To delete on iPad: 1 file(s)" in rendered
     assert "+ new.m4v" in rendered
     assert "- old.m4v" in rendered
-    assert "! gone.m4v" in rendered
+    assert "! Gone Pilot" in rendered  # missing tracks shown by name, not path
 
 
 # -- progress formatting ---------------------------------------------------------
@@ -144,3 +145,20 @@ def test_format_progress_no_eta_before_any_bytes():
     text = format_progress(done_bytes=0, total_bytes=1000, elapsed_seconds=0)
     assert "0%" in text
     assert "left" not in text
+
+
+def test_render_playlist_update_summarises():
+    """The playlist-update summary lists adds, removes and skipped files."""
+    update = PlaylistUpdate(
+        to_add=[MediaItem(rel_path="new.m4v", size=10, abs_path="/m/new.m4v")],
+        to_remove=[MediaItem(rel_path="old.m4v", size=10)],
+        in_sync=[MediaItem(rel_path="keep.m4v", size=10)],
+        missing_on_mac=[MediaItem(rel_path="gone.m4v", size=10)],
+    )
+    rendered = render_playlist_update(update)
+
+    assert "To add to playlist:      1 track(s)" in rendered
+    assert "To remove from playlist: 1 track(s)" in rendered
+    assert "+ new.m4v" in rendered
+    assert "- old.m4v" in rendered
+    assert "! gone.m4v" in rendered

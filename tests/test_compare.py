@@ -1,6 +1,6 @@
 """Tests for the compare logic."""
 
-from ipad_sync.compare import compare
+from ipad_sync.compare import compare, plan_playlist_update
 from ipad_sync.models import MediaItem
 
 
@@ -71,3 +71,63 @@ def test_missing_source_absent_from_ipad_is_only_flagged():
     result = compare([_pl("gone.m4v", missing=True)], [])
     assert result.to_copy == []
     assert [i.rel_path for i in result.missing_source] == ["gone.m4v"]
+
+
+# -- plan_playlist_update (reverse direction) ------------------------------------
+
+
+def _media_root(tmp_path, *rels):
+    """Create a media folder containing the given relative files.
+
+    Returns:
+        The media folder path.
+    """
+    root = tmp_path / "media"
+    for rel in rels:
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x")
+    root.mkdir(exist_ok=True)
+    return root
+
+
+def test_plan_add_when_on_ipad_and_media_exists(tmp_path):
+    """An iPad file present in the media folder is added with its full path."""
+    root = _media_root(tmp_path, "a.m4v")
+    update = plan_playlist_update([_ip("a.m4v")], [], root)
+    assert [i.rel_path for i in update.to_add] == ["a.m4v"]
+    assert update.to_add[0].abs_path == str(root / "a.m4v")
+    assert update.missing_on_mac == []
+
+
+def test_plan_skips_add_when_media_missing(tmp_path):
+    """An iPad file absent from the media folder is flagged, not added."""
+    root = _media_root(tmp_path)
+    update = plan_playlist_update([_ip("gone.m4v")], [], root)
+    assert update.to_add == []
+    assert [i.rel_path for i in update.missing_on_mac] == ["gone.m4v"]
+
+
+def test_plan_removes_track_not_on_ipad(tmp_path):
+    """A playlist track absent from the iPad is removed; matches are kept."""
+    root = _media_root(tmp_path, "keep.m4v")
+    playlist = [
+        MediaItem("keep.m4v", 100, abs_path=str(root / "keep.m4v"), missing=False),
+        MediaItem("old.m4v", 100, abs_path="/Volumes/Data/old.m4v", missing=False),
+    ]
+    update = plan_playlist_update([_ip("keep.m4v")], playlist, root)
+    assert [i.rel_path for i in update.in_sync] == ["keep.m4v"]
+    assert [i.rel_path for i in update.to_remove] == ["old.m4v"]
+    assert update.to_add == []
+
+
+def test_plan_removes_track_missing_from_media(tmp_path):
+    """A playlist track on the iPad but missing from the media folder is removed."""
+    root = _media_root(tmp_path)
+    playlist = [
+        MediaItem("keep.m4v", 100, abs_path=str(root / "keep.m4v"), missing=True)
+    ]
+    update = plan_playlist_update([_ip("keep.m4v")], playlist, root)
+    assert [i.rel_path for i in update.to_remove] == ["keep.m4v"]
+    assert update.in_sync == []
+    assert update.has_changes is True

@@ -11,7 +11,7 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ipad_sync.models import AppInfo, CompareResult, MediaItem
+    from ipad_sync.models import AppInfo, CompareResult, MediaItem, PlaylistUpdate
 
 _UNITS = ("B", "KB", "MB", "GB", "TB", "PB")
 
@@ -166,10 +166,39 @@ def render_compare(result: CompareResult) -> str:
         lines.append(
             f"  Missing from media folder (cannot copy): {len(result.missing_source)}"
         )
-        lines.extend(f"    ! {item.rel_path}" for item in result.missing_source)
+        lines.extend(f"    ! {item.display_name}" for item in result.missing_source)
 
     if not result.has_changes:
         lines.append("  Nothing to do — iPad already matches the playlist.")
+    return "\n".join(lines)
+
+
+def render_playlist_update(update: PlaylistUpdate) -> str:
+    """Render a planned playlist update as a human-readable summary.
+
+    Args:
+        update: The planned playlist changes to summarise.
+
+    Returns:
+        A multi-line string describing additions, removals and skipped files.
+    """
+    lines = ["Playlist update (iPad -> Apple TV playlist):"]
+    lines.extend((
+        f"  To add to playlist:      {len(update.to_add)} track(s)",
+        f"  To remove from playlist: {len(update.to_remove)} track(s)",
+        f"  Already correct:         {len(update.in_sync)} track(s)",
+    ))
+    lines.extend(f"    + {item.rel_path}" for item in update.to_add)
+    lines.extend(f"    - {item.rel_path}" for item in update.to_remove)
+
+    if update.missing_on_mac:
+        lines.append(
+            f"  On iPad but missing from media folder (not added): {len(update.missing_on_mac)}"
+        )
+        lines.extend(f"    ! {item.rel_path}" for item in update.missing_on_mac)
+
+    if not update.has_changes:
+        lines.append("  Nothing to do — the playlist already matches the iPad.")
     return "\n".join(lines)
 
 

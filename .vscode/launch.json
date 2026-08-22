@@ -16,7 +16,7 @@
             "envFile": "${workspaceFolder}/.env",
             "args": [
                 "--config", "configs/development.yaml",
-                "ipad-apps"
+                "to-ipad"
                 ]
         }
     ]
