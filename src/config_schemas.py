@@ -4,8 +4,7 @@
 class ConfigSchema:
     """Base class for configuration schemas."""
 
-    def __init__(self):
-
+    def __init__(self) -> None:
         self.validation = {
             "General": {
                 "type": "dict",
@@ -13,6 +12,16 @@ class ConfigSchema:
                 "nullable": True,
                 "schema": {
                     "AppName": {"type": "string", "required": False, "nullable": True},
+                    "SimulationMode": {
+                        "type": "boolean",
+                        "required": False,
+                        "nullable": True,
+                    },
+                    "SimulationRoot": {
+                        "type": "string",
+                        "required": False,
+                        "nullable": True,
+                    },
                 },
             },
             "AppleTV": {
@@ -30,7 +39,12 @@ class ConfigSchema:
                 "nullable": False,
                 "schema": {
                     "AppName": {"type": "string", "required": True},
-                    "MinimumFreeSpaceGB": {"type": "integer", "required": False, "nullable": True},
+                    "BundleID": {"type": "string", "required": False, "nullable": True},
+                    "MinimumFreeSpaceGB": {
+                        "type": "integer",
+                        "required": False,
+                        "nullable": True,
+                    },
                 },
             },
         }

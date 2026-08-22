@@ -13,6 +13,7 @@ dependencies = [
 
 [project.optional-dependencies]
 all = [
+    "mypy>=1.11.0",
     "pre-commit>=4.6.1",
     "pytest>=9.1.1",
     "pytest-dotenv>=0.5.2",
@@ -28,4 +29,15 @@ zip-safe = false
 where = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "tests"]
+
+[tool.mypy]
+mypy_path = "src"
+explicit_package_bases = true
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["sc_foundation.*", "pymobiledevice3.*", "dotenv.*"]
+follow_imports = "skip"
+follow_untyped_imports = true
+ignore_missing_imports = true

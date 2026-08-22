@@ -14,7 +14,10 @@
             "preLaunchTask": "build-env",
             "postDebugTask": "clean-env",
             "envFile": "${workspaceFolder}/.env",
-            "args": ["--config", "configs/development.yaml"]
+            "args": [
+                "--config", "configs/development.yaml",
+                "ipad-apps"
+                ]
         }
     ]
 }

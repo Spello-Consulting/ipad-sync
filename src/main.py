@@ -14,27 +14,54 @@ from sc_foundation import (
 )
 
 from config_schemas import ConfigSchema
+from ipad_sync.appletv import PlaylistService
+from ipad_sync.commands import cmd_ipad_apps
+from ipad_sync.device import IPadDevice
+from ipad_sync.startup import StartupChecker, StartupError
 
 CONFIG_FILE = "config.yaml"
 
+# All supported operations (command-line command names).
+COMMANDS = (
+    "ipad-apps",
+    "list-playlist",
+    "list-ipad",
+    "compare",
+    "to-ipad",
+    "to-playlist",
+)
 
-def parse_command_line_args() -> dict[str, str | None]:
+# Commands implemented so far (others report "not yet implemented").
+IMPLEMENTED_COMMANDS = frozenset({"ipad-apps"})
+
+
+def parse_command_line_args() -> dict[str, str | bool | None]:
     """Parse and validate command line arguments.
 
     Returns:
         dict: Dictionary containing parsed arguments with keys:
-            - 'config_file': Path to configuration file (always present)
-            - 'homedir': Project home directory (may be None)
+            - 'command': The operation to run (always present).
+            - 'config_file': Path to configuration file (always present).
+            - 'homedir': Project home directory (may be None).
+            - 'simulate': Whether the --simulate flag was set.
+            - 'assume_yes': Whether the --yes flag was set.
     """
     parser = argparse.ArgumentParser(
         description="ipad-sync - Tool to sync an Apple TV playlist to the Infuse app",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python main.py
-  python main.py --config /path/to/config.yaml
-  python main.py --homedir /opt/ipad-sync --config config.yaml
-        """
+  python main.py ipad-apps
+  python main.py list-playlist --config /path/to/config.yaml
+  python main.py to-ipad --yes
+  python main.py list-ipad --simulate
+        """,
+    )
+
+    parser.add_argument(
+        "command",
+        choices=COMMANDS,
+        help="The operation to perform",
     )
 
     parser.add_argument(
@@ -51,15 +78,33 @@ Examples:
         help=f"Path to configuration file (default: {CONFIG_FILE})",
     )
 
+    parser.add_argument(
+        "--simulate",
+        action="store_true",
+        help="Run against a local folder instead of a connected iPad",
+    )
+
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompts (assume yes)",
+    )
+
     args = parser.parse_args()
 
     if args.homedir:
         homedir = Path(args.homedir)
         if not homedir.exists():
-            print(f"ERROR: Specified homedir does not exist: {args.homedir}", file=sys.stderr)
+            print(
+                f"ERROR: Specified homedir does not exist: {args.homedir}",
+                file=sys.stderr,
+            )
             sys.exit(1)
         if not homedir.is_dir():
-            print(f"ERROR: Specified homedir is not a directory: {args.homedir}", file=sys.stderr)
+            print(
+                f"ERROR: Specified homedir is not a directory: {args.homedir}",
+                file=sys.stderr,
+            )
             sys.exit(1)
         base_dir = homedir.resolve()
         os.environ["SC_FOUNDATION_PROJECT_ROOT"] = str(base_dir)
@@ -72,21 +117,30 @@ Examples:
             config_path = base_dir / config_path
         config_file = str(config_path.resolve())
         if not Path(config_file).exists():
-            print(f"ERROR: Configuration file does not exist: {config_file}", file=sys.stderr)
+            print(
+                f"ERROR: Configuration file does not exist: {config_file}",
+                file=sys.stderr,
+            )
             sys.exit(1)
         if not Path(config_file).is_file():
-            print(f"ERROR: Configuration path is not a file: {config_file}", file=sys.stderr)
+            print(
+                f"ERROR: Configuration path is not a file: {config_file}",
+                file=sys.stderr,
+            )
             sys.exit(1)
     else:
         config_file = CONFIG_FILE
 
     return {
+        "command": args.command,
         "config_file": config_file,
         "homedir": str(base_dir) if args.homedir else None,
+        "simulate": args.simulate,
+        "assume_yes": args.yes,
     }
 
 
-def report_fatal_heartbeat(logger) -> None:
+def report_fatal_heartbeat(logger: SCLogger) -> None:
     """Report a fatal error to the heartbeat monitor and log it.
 
     Args:
@@ -95,7 +149,9 @@ def report_fatal_heartbeat(logger) -> None:
     logger.ping_heartbeat(is_fail=True)
 
 
-def initialize_config_and_logging(cmd_args) -> tuple[SCConfigManager, SCLogger]:
+def initialize_config_and_logging(
+    cmd_args: dict[str, str | bool | None],
+) -> tuple[SCConfigManager, SCLogger]:
     """Initialize the configuration manager.
 
     If either fails, the program will exit with an error message.
@@ -113,8 +169,7 @@ def initialize_config_and_logging(cmd_args) -> tuple[SCConfigManager, SCLogger]:
         config_file = cmd_args["config_file"]
         assert isinstance(config_file, str)
         config = SCConfigManager(
-            config_file=config_file,
-            validation_schema=schemas.validation
+            config_file=config_file, validation_schema=schemas.validation
         )
     except RuntimeError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
@@ -128,20 +183,87 @@ def initialize_config_and_logging(cmd_args) -> tuple[SCConfigManager, SCLogger]:
     else:
         logger.log_message("", "summary")
         logger.log_message("", "summary")
-        logger.log_message("Tool to sync an Apple TV playlist to the Infuse app application starting.", "summary")
+        logger.log_message(
+            "Tool to sync an Apple TV playlist to the Infuse app application starting.",
+            "summary",
+        )
         logger.log_message(f"Configuration file: {cmd_args['config_file']}", "debug")
         if cmd_args["homedir"]:
             logger.log_message(f"Home directory: {cmd_args['homedir']}", "debug")
 
         if logger.get_fatal_error():
-            logger.log_message("Application has recovered after a prior fatal failure.", "summary")
+            logger.log_message(
+                "Application has recovered after a prior fatal failure.", "summary"
+            )
             logger.clear_fatal_error()
-            logger.send_email("ipad-sync recovery", "ipad-sync run was successful after a prior failure.")
+            logger.send_email(
+                "ipad-sync recovery",
+                "ipad-sync run was successful after a prior failure.",
+            )
 
     return config, logger
 
 
-def main():
+def run_command(
+    config: SCConfigManager,
+    logger: SCLogger,
+    cmd_args: dict[str, str | bool | None],
+) -> None:
+    """Run startup checks and dispatch the requested command.
+
+    Args:
+        config: The loaded configuration manager.
+        logger: The initialised logger.
+        cmd_args: Parsed command-line arguments.
+    """
+    log = logger.log_message
+    command = cmd_args["command"]
+
+    simulate = bool(config.get("General", "SimulationMode", default=False)) or bool(
+        cmd_args["simulate"]
+    )
+    project_root = Path(SCCommon.get_project_root())
+    media_folder = Path(str(config.get("AppleTV", "MediaFolder")))
+
+    playlist = PlaylistService(
+        playlist_name=str(config.get("AppleTV", "Playlist")),
+        media_folder=media_folder,
+        script_dir=project_root / "applescript",
+        log=log,
+    )
+
+    device = None if simulate else IPadDevice(log=log)
+    try:
+        checker = StartupChecker(
+            app_name=str(config.get("iPad", "AppName")),
+            media_folder=media_folder,
+            configured_bundle_id=config.get("iPad", "BundleID", default=None),
+            device=device,
+            playlist=playlist,
+            simulate=simulate,
+            log=log,
+        )
+        try:
+            startup = checker.run()
+        except StartupError as exc:
+            logger.log_fatal_error(f"Startup check failed: {exc}")
+            return
+
+        if command not in IMPLEMENTED_COMMANDS:
+            log(
+                f"Command '{command}' is not implemented yet (coming in a later build phase).",
+                "summary",
+            )
+            return
+
+        if command == "ipad-apps":
+            cmd_ipad_apps(startup, log)
+    finally:
+        if device is not None:
+            device.close()
+
+
+def main() -> None:
     """Main entry point."""
     load_dotenv()  # Load .env file if present (no-op if absent)
     print(f"Starting ipad-sync on {platform.system()}")
@@ -150,7 +272,7 @@ def main():
 
     config, logger = initialize_config_and_logging(cmd_args)
 
-    # Start main code here
+    run_command(config, logger, cmd_args)
 
 
 if __name__ == "__main__":

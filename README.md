@@ -49,6 +49,32 @@ You can run it immediately by:
 This will select the relevant config file (using the APP_CONFIG environment variable), do a `uv sync` and then
 launch the app.
 
+## Usage
+
+The app takes a command plus the usual `--config` option:
+
+```bash
+uv run python src/main.py ipad-apps --config configs/development.yaml
+```
+
+Every run first performs the startup checks (USB connection, trust/pairing,
+media folder, playlist probe, and iPad app lookup) before the command runs.
+
+Commands:
+
+| Command | Status | Description |
+|---|---|---|
+| `ipad-apps` | ✅ Phase 1 | List installed iPad apps with display name and bundle id |
+| `list-playlist` | ⏳ Phase 2 | List the Apple TV playlist contents |
+| `list-ipad` | ⏳ Phase 2 | List the Infuse Documents contents |
+| `compare` | ⏳ Phase 2 | Compare playlist vs iPad by relative path |
+| `to-ipad` | ⏳ Phase 3 | Mirror playlist media onto the iPad |
+| `to-playlist` | ⏳ Phase 4 | Rebuild the playlist from the iPad |
+
+Flags: `--simulate` runs against a local folder instead of an iPad (see
+`General.SimulationMode`/`SimulationRoot` in the config); `--yes` skips
+confirmation prompts.
+
 ## Development
 
 ```bash
