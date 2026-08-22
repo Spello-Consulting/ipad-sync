@@ -15,9 +15,16 @@ from sc_foundation import (
 
 from config_schemas import ConfigSchema
 from ipad_sync.appletv import PlaylistService
-from ipad_sync.commands import cmd_ipad_apps
+from ipad_sync.commands import (
+    cmd_compare,
+    cmd_ipad_apps,
+    cmd_list_ipad,
+    cmd_list_playlist,
+)
 from ipad_sync.device import IPadDevice
 from ipad_sync.startup import StartupChecker, StartupError
+from ipad_sync.storage import SimulationStorageManager, StorageManager
+from ipad_sync.storage.ipad import IPadStorageManager
 
 CONFIG_FILE = "config.yaml"
 
@@ -32,7 +39,10 @@ COMMANDS = (
 )
 
 # Commands implemented so far (others report "not yet implemented").
-IMPLEMENTED_COMMANDS = frozenset({"ipad-apps"})
+IMPLEMENTED_COMMANDS = frozenset({"ipad-apps", "list-playlist", "list-ipad", "compare"})
+
+# Commands that need a connected Documents storage session.
+STORAGE_COMMANDS = frozenset({"list-ipad", "compare"})
 
 
 def parse_command_line_args() -> dict[str, str | bool | None]:
@@ -258,9 +268,57 @@ def run_command(
 
         if command == "ipad-apps":
             cmd_ipad_apps(startup, log)
+        elif command == "list-playlist":
+            cmd_list_playlist(playlist, log)
+        elif command in STORAGE_COMMANDS:
+            storage = _build_storage(
+                simulate=simulate,
+                config=config,
+                project_root=project_root,
+                device=device,
+                bundle_id=startup.bundle_id,
+            )
+            with storage:
+                if command == "list-ipad":
+                    cmd_list_ipad(storage, log)
+                elif command == "compare":
+                    cmd_compare(playlist, storage, log)
     finally:
         if device is not None:
             device.close()
+
+
+def _build_storage(
+    *,
+    simulate: bool,
+    config: SCConfigManager,
+    project_root: Path,
+    device: IPadDevice | None,
+    bundle_id: str | None,
+) -> StorageManager:
+    """Build the storage manager appropriate to the run mode.
+
+    Args:
+        simulate: Whether to use the local simulation backend.
+        config: The loaded configuration manager.
+        project_root: The resolved project root directory.
+        device: The connected device (required when not simulating).
+        bundle_id: The target app's bundle id (required when not simulating).
+
+    Returns:
+        A (not-yet-connected) storage manager.
+
+    Raises:
+        StartupError: If a device-backed manager is requested without a device.
+    """
+    if simulate:
+        configured = config.get("General", "SimulationRoot", default=None)
+        root = Path(str(configured)) if configured else project_root / "sim-documents"
+        return SimulationStorageManager(root)
+    if device is None or bundle_id is None:
+        msg = "Internal error: device and bundle id are required for iPad storage."
+        raise StartupError(msg)
+    return IPadStorageManager(device, bundle_id)
 
 
 def main() -> None:

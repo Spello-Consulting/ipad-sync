@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from ipad_sync.device import DeviceError
 
 if TYPE_CHECKING:
-    from ipad_sync.models import AppInfo
+    from ipad_sync.models import AppInfo, MediaItem
 
 
 class FakeDevice:
@@ -52,12 +52,21 @@ class FakeDevice:
 class FakePlaylist:
     """A stand-in for :class:`ipad_sync.appletv.PlaylistService`."""
 
-    def __init__(self, exists: bool = False, name: str = "iPad Sync") -> None:
+    def __init__(
+        self,
+        exists: bool = False,
+        name: str = "iPad Sync",
+        items: list[MediaItem] | None = None,
+    ) -> None:
         self._exists = exists
         self._name = name
+        self._items = items if items is not None else []
 
     def exists(self) -> bool:
         return self._exists
 
     def get_name(self) -> str:
         return self._name
+
+    def read(self) -> list[MediaItem]:
+        return list(self._items)

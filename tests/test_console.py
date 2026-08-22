@@ -4,8 +4,15 @@ import builtins
 
 import pytest
 
-from ipad_sync.console import confirm, format_size, render_app_list
-from ipad_sync.models import AppInfo
+from ipad_sync.compare import compare
+from ipad_sync.console import (
+    confirm,
+    format_size,
+    render_app_list,
+    render_compare,
+    render_media_list,
+)
+from ipad_sync.models import AppInfo, MediaItem
 
 
 @pytest.mark.parametrize(
@@ -67,3 +74,42 @@ def test_confirm_interactive(monkeypatch, answer, expected):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr(builtins, "input", lambda _prompt: answer)
     assert confirm("Proceed?") is expected
+
+
+# -- media list / compare rendering ----------------------------------------------
+
+
+def test_render_media_list_empty_uses_message():
+    """An empty list shows the title and the empty message."""
+    rendered = render_media_list([], "iPad Documents:", "  (no files on iPad)")
+    assert "iPad Documents:" in rendered
+    assert "(no files on iPad)" in rendered
+
+
+def test_render_media_list_shows_files_and_total():
+    """Each file and a total appear; missing files are marked."""
+    items = [
+        MediaItem(rel_path="a.m4v", size=1024),
+        MediaItem(rel_path="b.m4v", size=0, missing=True),
+    ]
+    rendered = render_media_list(items, "Playlist:", "(empty)")
+    assert "a.m4v" in rendered
+    assert "1.0 KB" in rendered
+    assert "MISSING" in rendered
+    assert "2 file(s)" in rendered
+
+
+def test_render_compare_summarises_actions():
+    """The compare summary lists copies, deletions and missing sources."""
+    playlist = [
+        MediaItem(rel_path="new.m4v", size=2048, name="new"),
+        MediaItem(rel_path="gone.m4v", size=0, name="gone", missing=True),
+    ]
+    ipad = [MediaItem(rel_path="old.m4v", size=100)]
+    rendered = render_compare(compare(playlist, ipad))
+
+    assert "To copy to iPad:   1 file(s)" in rendered
+    assert "To delete on iPad: 1 file(s)" in rendered
+    assert "+ new.m4v" in rendered
+    assert "- old.m4v" in rendered
+    assert "! gone.m4v" in rendered

@@ -23,6 +23,11 @@ if TYPE_CHECKING:
 # AFC GET_DEVINFO free-space keys, in order of preference.
 _FREE_SPACE_KEYS = ("FSFreeBytes", "FSFreeBlocks")
 
+# With ``documents_only`` House Arrest (VendDocuments), the AFC session is rooted
+# at the app container and only the ``Documents`` subtree is accessible; listing
+# "/" itself returns PERM_DENIED. All paths are therefore anchored here.
+_DOCUMENTS_ROOT = "/Documents"
+
 
 class IPadStorageManager(StorageManager):
     """A :class:`StorageManager` backed by an iPad app's Documents over AFC.
@@ -58,19 +63,23 @@ class IPadStorageManager(StorageManager):
             One :class:`MediaItem` per file, sorted by relative path.
         """
         items: list[MediaItem] = []
-        self._walk(".", items)
+        self._walk(_DOCUMENTS_ROOT, items)
         items.sort(key=lambda item: item.rel_path)
         return items
 
     def _walk(self, path: str, items: list[MediaItem]) -> None:
         """Depth-first walk accumulating file entries into ``items``."""
         for name in self._device.afc_listdir(path):
-            child = name if path in {".", ""} else posixpath.join(path, name)
+            # Skip hidden entries such as Infuse's ".Trash" folder of deleted
+            # files, which must not count as iPad content.
+            if name.startswith("."):
+                continue
+            child = posixpath.join(path, name)
             info = self._device.afc_stat(child)
             if stat.S_ISDIR(info.st_mode):
                 self._walk(child, items)
             else:
-                rel = child.removeprefix("./")
+                rel = posixpath.relpath(child, _DOCUMENTS_ROOT)
                 items.append(MediaItem(rel_path=rel, size=info.st_size))
 
     def free_space_bytes(self) -> int:
@@ -105,10 +114,11 @@ class IPadStorageManager(StorageManager):
             rel_path: Destination POSIX path relative to the Documents root.
             on_progress: Optional ``(bytes_transferred, total_bytes)`` callback.
         """
-        parent = posixpath.dirname(rel_path)
+        remote = posixpath.join(_DOCUMENTS_ROOT, rel_path)
+        parent = posixpath.dirname(remote)
         if parent:
             self._device.afc_makedirs(parent)
-        self._device.afc_push(str(local_path), rel_path)
+        self._device.afc_push(str(local_path), remote)
         if on_progress is not None:
             size = local_path.stat().st_size
             on_progress(size, size)
@@ -119,4 +129,4 @@ class IPadStorageManager(StorageManager):
         Args:
             rel_path: POSIX path relative to the Documents root.
         """
-        self._device.afc_rm(rel_path)
+        self._device.afc_rm(posixpath.join(_DOCUMENTS_ROOT, rel_path))

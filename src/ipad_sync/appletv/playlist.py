@@ -1,19 +1,25 @@
 """Read/write access to the Apple TV sync playlist via AppleScript.
 
 AppleScript is used only for the minimal data pull/push; all parsing and path
-conversion happens in Python. Phase 1 implements the playlist existence probe
-used by the startup checks plus the pure HFS->POSIX conversion helper; playlist
-reading and writing are added in later phases.
+conversion happens in Python. This module provides the playlist existence probe,
+the pure HFS->POSIX conversion helper and bulk playlist reading; playlist writing
+is added in a later phase.
 """
 
 from __future__ import annotations
 
 import subprocess  # noqa: S404 - osascript is a trusted, fixed local binary
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+from ipad_sync.models import MediaItem
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
+
+# Delimiters emitted by read_playlist.applescript (must match that script).
+_GROUP_SEP = "\x1d"  # ASCII 29: separates the names blob from the locations blob
+_RECORD_SEP = "\x1e"  # ASCII 30: separates entries within a blob
 
 
 class PlaylistError(Exception):
@@ -115,3 +121,71 @@ class PlaylistService:
         """
         output = self._run_script("playlist_exists.applescript", self._playlist_name)
         return output == "1"
+
+    def read(self) -> list[MediaItem]:
+        """Read the playlist's file tracks as media items.
+
+        Each track's HFS location is converted to a POSIX path, made relative to
+        the configured media folder, and checked on disk for existence and size.
+
+        Returns:
+            One :class:`MediaItem` per file track, in playlist order. Items whose
+            file is absent from disk are flagged ``missing`` (with ``size`` 0).
+        """
+        output = self._run_script("read_playlist.applescript", self._playlist_name)
+        return self._parse(output)
+
+    def _parse(self, output: str) -> list[MediaItem]:
+        """Parse the AppleScript blob into media items.
+
+        Returns:
+            The parsed media items (empty when the blob is empty).
+        """
+        if not output:
+            return []
+        names_blob, _, locs_blob = output.partition(_GROUP_SEP)
+        names = names_blob.split(_RECORD_SEP) if names_blob else []
+        locations = locs_blob.split(_RECORD_SEP) if locs_blob else []
+
+        items: list[MediaItem] = []
+        for name, hfs in zip(names, locations, strict=False):
+            posix = hfs_to_posix(hfs)
+            exists, size = self._stat_path(posix)
+            items.append(
+                MediaItem(
+                    rel_path=self._relative_to_root(posix),
+                    size=size,
+                    name=name,
+                    abs_path=posix,
+                    missing=not exists,
+                )
+            )
+        return items
+
+    @staticmethod
+    def _stat_path(posix_path: str) -> tuple[bool, int]:
+        """Return ``(exists, size)`` for a media file on the local machine.
+
+        Returns:
+            A ``(exists, size_in_bytes)`` tuple; ``(False, 0)`` when absent.
+        """
+        path = Path(posix_path)
+        if path.is_file():
+            return True, path.stat().st_size
+        return False, 0
+
+    def _relative_to_root(self, posix_path: str) -> str:
+        """Return ``posix_path`` relative to the media folder (POSIX style).
+
+        Falls back to the absolute path (which simply won't match any iPad entry)
+        when the file lies outside the configured media folder.
+        """
+        try:
+            return Path(posix_path).relative_to(self._media_folder).as_posix()
+        except ValueError:
+            if self._log is not None:
+                self._log(
+                    f"Playlist track is outside the media folder, cannot map: {posix_path}",
+                    "warning",
+                )
+            return posix_path

@@ -137,9 +137,15 @@ class SimulationStorageManager(StorageManager):
         self._require_connected()
         items: list[MediaItem] = []
         for path in sorted(self._root.rglob("*")):
-            if path.is_file():
-                rel = path.relative_to(self._root).as_posix()
-                items.append(MediaItem(rel_path=rel, size=path.stat().st_size))
+            if not path.is_file():
+                continue
+            relative = path.relative_to(self._root)
+            # Skip hidden entries (e.g. a ".Trash" folder), matching the iPad backend.
+            if any(part.startswith(".") for part in relative.parts):
+                continue
+            items.append(
+                MediaItem(rel_path=relative.as_posix(), size=path.stat().st_size)
+            )
         return items
 
     def _used_bytes(self) -> int:

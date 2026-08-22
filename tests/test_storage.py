@@ -81,3 +81,18 @@ def test_free_space_reflects_capacity_and_usage(tmp_path, source_file):
         assert manager.free_space_bytes() == 1000
         manager.push_file(source_file, "a.m4v")
         assert manager.free_space_bytes() == 1000 - 11
+
+
+def test_list_files_skips_hidden_entries(tmp_path, source_file):
+    """Hidden files and files under hidden dirs are excluded from listings."""
+    with SimulationStorageManager(tmp_path / "docs") as manager:
+        manager.push_file(source_file, "keep.m4v")
+        # Simulate a hidden trash folder and a dotfile directly.
+        trash = manager.root / ".Trash"
+        trash.mkdir()
+        (trash / "deleted.m4v").write_bytes(b"x")
+        (manager.root / ".DS_Store").write_bytes(b"x")
+
+        rels = [item.rel_path for item in manager.list_files()]
+
+    assert rels == ["keep.m4v"]

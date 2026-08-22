@@ -1,6 +1,7 @@
 """Tests for the Apple TV playlist service."""
 
 import subprocess  # noqa: S404 - only used to build fakes and assert calls
+from pathlib import Path
 
 import pytest
 
@@ -77,3 +78,79 @@ def test_osascript_failure_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(PlaylistError, match="boom"):
         service.exists()
+
+
+# -- read() parsing --------------------------------------------------------------
+
+_GS = "\x1d"  # group separator (matches read_playlist.applescript)
+_RS = "\x1e"  # record separator
+
+_MEDIA = "/Volumes/Data_IT/Multimedia/Video"
+
+
+def _read_service(tmp_path):
+    """A service rooted at the standard media folder for read() tests.
+
+    Returns:
+        A :class:`PlaylistService` rooted at the standard media folder.
+    """
+    return PlaylistService("iPad Sync", Path(_MEDIA), tmp_path / "applescript")
+
+
+def _blob(names, locations):
+    """Assemble a names/locations blob as the AppleScript would emit it.
+
+    Returns:
+        The combined blob string with the expected separators.
+    """
+    return _RS.join(names) + _GS + _RS.join(locations)
+
+
+def test_read_maps_paths_and_flags_missing(tmp_path, monkeypatch):
+    """read() converts HFS paths, computes relative paths and flags missing files."""
+    service = _read_service(tmp_path)
+    blob = _blob(
+        ["Movie A", "Amok Time"],
+        [
+            "Data_IT:Multimedia:Video:Movie A.m4v",
+            "Data_IT:Multimedia:Video:Star Trek:Season 2:Amok Time.m4v",
+        ],
+    )
+    monkeypatch.setattr(service, "_run_script", lambda *_a: blob)
+
+    present = "/Volumes/Data_IT/Multimedia/Video/Movie A.m4v"
+    stats = {present: (True, 500)}
+    monkeypatch.setattr(service, "_stat_path", lambda p: stats.get(p, (False, 0)))
+
+    items = service.read()
+
+    assert len(items) == 2
+    assert items[0].rel_path == "Movie A.m4v"
+    assert items[0].size == 500
+    assert items[0].missing is False
+    assert items[0].abs_path == present
+    assert items[0].name == "Movie A"
+
+    assert items[1].rel_path == "Star Trek/Season 2/Amok Time.m4v"
+    assert items[1].missing is True
+    assert items[1].size == 0
+
+
+def test_read_empty_output_returns_empty(tmp_path, monkeypatch):
+    """A missing/empty playlist yields no items."""
+    service = _read_service(tmp_path)
+    monkeypatch.setattr(service, "_run_script", lambda *_a: "")
+    assert service.read() == []
+
+
+def test_read_path_outside_media_folder_falls_back_to_abs(tmp_path, monkeypatch):
+    """A track outside the media folder keeps its absolute path as rel_path."""
+    service = _read_service(tmp_path)
+    blob = _blob(["Stray"], ["Other_Vol:Movies:Stray.m4v"])
+    monkeypatch.setattr(service, "_run_script", lambda *_a: blob)
+    monkeypatch.setattr(service, "_stat_path", lambda _p: (True, 10))
+
+    items = service.read()
+
+    assert items[0].rel_path == "/Volumes/Other_Vol/Movies/Stray.m4v"
+    assert items[0].missing is False

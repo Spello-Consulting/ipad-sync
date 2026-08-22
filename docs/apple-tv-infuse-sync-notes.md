@@ -157,11 +157,11 @@ Believed to be `com.firecore.infuse` — **confirm from actual output**, not ass
 pymobiledevice3 apps list                                    # list installed apps
 pymobiledevice3 apps query                                   # metadata for bundle ids
 pymobiledevice3 apps install / uninstall
-pymobiledevice3 apps afc <bundle_id> --documents              # interactive AFC shell (ls, cd, etc.)
-pymobiledevice3 apps webdav <bundle_id> --documents           # serve container over WebDAV for mounting
-pymobiledevice3 apps pull <bundle_id> <remote> <local> --documents
-pymobiledevice3 apps push <bundle_id> <local> <remote> --documents
-pymobiledevice3 apps rm <bundle_id> <remote> --documents
+pymobiledevice3 apps afc com.firecore.infuse --documents              # interactive AFC shell (ls, cd, etc.)
+pymobiledevice3 apps webdav com.firecore.infuse --documents           # serve container over WebDAV for mounting
+pymobiledevice3 apps pull com.firecore.infuse <remote> <local> --documents
+pymobiledevice3 apps push com.firecore.infuse <local> <remote> --documents
+pymobiledevice3 apps rm com.firecore.infuse <remote> --documents
 pymobiledevice3 apps install-record
 ```
 

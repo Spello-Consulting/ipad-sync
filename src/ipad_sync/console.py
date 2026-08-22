@@ -11,7 +11,7 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ipad_sync.models import AppInfo
+    from ipad_sync.models import AppInfo, CompareResult, MediaItem
 
 _UNITS = ("B", "KB", "MB", "GB", "TB", "PB")
 
@@ -58,6 +58,78 @@ def render_app_list(apps: list[AppInfo]) -> str:
     ]
     lines.extend(f"{app.display_name:<{name_width}}  {app.bundle_id}" for app in apps)
     lines.extend(("", f"{len(apps)} app(s)."))
+    return "\n".join(lines)
+
+
+def _total_size(items: list[MediaItem]) -> int:
+    """Return the summed size of all items in bytes."""
+    return sum(item.size for item in items)
+
+
+def render_media_list(items: list[MediaItem], title: str, empty_message: str) -> str:
+    """Render media items as a table of relative path and size.
+
+    Args:
+        items: The media items to display (already ordered by the caller).
+        title: A heading shown above the table.
+        empty_message: Text shown instead of a table when ``items`` is empty.
+
+    Returns:
+        A multi-line string with the table and a summary footer.
+    """
+    if not items:
+        return f"{title}\n{empty_message}"
+
+    path_header, size_header = "Path", "Size"
+    path_width = max(len(path_header), *(len(item.rel_path) for item in items))
+
+    lines = [
+        title,
+        f"{path_header:<{path_width}}  {size_header:>10}",
+        f"{'-' * path_width}  {'-' * 10}",
+    ]
+    for item in items:
+        size_text = "MISSING" if item.missing else format_size(item.size)
+        lines.append(f"{item.rel_path:<{path_width}}  {size_text:>10}")
+    lines.append(f"\n{len(items)} file(s), {format_size(_total_size(items))} total.")
+    return "\n".join(lines)
+
+
+def render_compare(result: CompareResult) -> str:
+    """Render a comparison result as a human-readable summary.
+
+    Args:
+        result: The comparison to summarise.
+
+    Returns:
+        A multi-line string describing copies, deletions, matches and any
+        missing source files.
+    """
+    lines = ["Comparison (playlist vs iPad):"]
+
+    copy_size = format_size(_total_size(result.to_copy))
+    delete_size = format_size(_total_size(result.to_delete))
+    lines.extend((
+        f"  To copy to iPad:   {len(result.to_copy)} file(s), {copy_size}",
+        f"  To delete on iPad: {len(result.to_delete)} file(s), {delete_size}",
+        f"  Already in sync:   {len(result.in_sync)} file(s)",
+    ))
+
+    lines.extend(
+        f"    + {item.rel_path} ({format_size(item.size)})" for item in result.to_copy
+    )
+    lines.extend(
+        f"    - {item.rel_path} ({format_size(item.size)})" for item in result.to_delete
+    )
+
+    if result.missing_source:
+        lines.append(
+            f"  Missing from media folder (cannot copy): {len(result.missing_source)}"
+        )
+        lines.extend(f"    ! {item.rel_path}" for item in result.missing_source)
+
+    if not result.has_changes:
+        lines.append("  Nothing to do — iPad already matches the playlist.")
     return "\n".join(lines)
 
 

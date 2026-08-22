@@ -159,7 +159,9 @@ class IPadDevice:
 
         async def _lookup() -> dict[str, dict[str, Any]]:
             async with InstallationProxyService(lockdown) as proxy:
-                result: dict[str, dict[str, Any]] = await proxy.get_apps(application_type=application_type)
+                result: dict[str, dict[str, Any]] = await proxy.get_apps(
+                    application_type=application_type
+                )
                 return result
 
         try:

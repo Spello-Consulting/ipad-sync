@@ -17,9 +17,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from ipad_sync.appletv.playlist import PlaylistService
-    from ipad_sync.device import IPadDevice
     from ipad_sync.models import AppInfo
+    from ipad_sync.protocols import DeviceProbe, PlaylistProbe
 
 
 class StartupError(Exception):
@@ -54,8 +53,8 @@ class StartupChecker:
         app_name: str,
         media_folder: Path,
         configured_bundle_id: str | None,
-        device: IPadDevice | None,
-        playlist: PlaylistService,
+        device: DeviceProbe | None,
+        playlist: PlaylistProbe,
         simulate: bool,
         log: Callable[[str, str], None] | None = None,
     ) -> None:
@@ -107,7 +106,7 @@ class StartupChecker:
 
     # -- individual checks ------------------------------------------------------
 
-    def _require_device(self) -> IPadDevice:
+    def _require_device(self) -> DeviceProbe:
         if self._device is None:
             msg = "No device available (internal error: device not provided)."
             raise StartupError(msg)
@@ -172,7 +171,9 @@ class StartupChecker:
         if exists:
             self._info(f"Apple TV playlist {playlist_name} found.")
         else:
-            self._info(f"Apple TV playlist {playlist_name} does not exist yet (this is OK).")
+            self._info(
+                f"Apple TV playlist {playlist_name} does not exist yet (this is OK)."
+            )
         return exists
 
     def _load_apps(self) -> list[AppInfo]:
