@@ -9,14 +9,18 @@ import stat
 from pathlib import Path
 from types import SimpleNamespace
 
+from ipad_sync.models import DiskUsage
 from ipad_sync.storage.ipad import IPadStorageManager
 
 
 class FakeAfcDevice:
     """A fake :class:`IPadDevice` exposing a canned ``/Documents`` tree."""
 
-    def __init__(self, tree):
+    def __init__(self, tree, disk_usage=None):
         self._tree = tree
+        self._disk_usage = disk_usage or DiskUsage(
+            total_capacity=256_000_000_000, available=2048
+        )
         self.listdir_calls: list[str] = []
         self.pushed: list[tuple[str, str]] = []
         self.made_dirs: list[str] = []
@@ -24,6 +28,9 @@ class FakeAfcDevice:
 
     def open_documents(self, _bundle_id):
         pass
+
+    def disk_usage(self):
+        return self._disk_usage
 
     def close(self):
         pass
@@ -106,10 +113,11 @@ def test_remove_file_anchors_at_documents():
     assert device.removed == ["/Documents/Movie.m4v"]
 
 
-def test_free_space_reads_device_info():
-    """free_space_bytes reads the AFC device-info free-space key."""
-    device = FakeAfcDevice(_TREE)
-    device.afc_device_info = lambda: {"FSFreeBytes": "2048"}  # type: ignore[attr-defined]
+def test_free_space_uses_lockdown_disk_usage():
+    """free_space_bytes returns the device-wide immediately-available figure."""
+    device = FakeAfcDevice(
+        _TREE, disk_usage=DiskUsage(total_capacity=256_000_000_000, available=2048)
+    )
     manager = IPadStorageManager(device, "com.firecore.infuse")
 
     assert manager.free_space_bytes() == 2048

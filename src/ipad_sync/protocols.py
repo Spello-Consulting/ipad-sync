@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from ipad_sync.models import AppInfo
+    from ipad_sync.models import AppInfo, DiskUsage
 
 
 @runtime_checkable
@@ -41,4 +41,8 @@ class DeviceProbe(Protocol):
 
     def list_apps(self, application_type: str = "User") -> list[AppInfo]:
         """List installed applications."""
+        ...
+
+    def disk_usage(self) -> DiskUsage:
+        """Return the iPad's device-wide storage figures."""
         ...

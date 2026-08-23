@@ -46,6 +46,7 @@ When the ipad-sync starts it must perform the following checks first, regardless
 1. Confirm the iPad is connected via USB (`pymobiledevice3 usbmux list`)
 2. Confirm that there is a trust relationship between the desktop running ipad-sync and the ipad (`pymobiledevice3 lockdown pair`)
 3. Checks the negiotiated speed of the USB connection using ioreg. Report the speed in MB/s and G/Mbps. If speed is USB 2.0 or slower, show a warning. 
+3b. Report the iPad's free storage (from the lockdown `com.apple.disk_usage` domain — `AmountDataAvailable` of `TotalDiskCapacity`). This is informational and never aborts. iOS *Settings* may show more free space because it also counts reclaimable APFS purgeable storage that Apple does not expose over lockdown/AFC.
 4. Confirm that the media folder (AppleTV.MediaFolder config option) exists and is accessible. 
 5. Checks to see if the Apple TV playlist already exists (it's OK if it doesn't). If it exists, make sure it's accessible
 6. Lookup the Bundle ID for the iPad app name specified in the iPad.AppName config option. This could be done using the  `pymobiledevice3 apps list` command to do this. ipad-sync would need to extract the Bundle ID key and CFBundleDisplayName key value from the command's output for each app. This data should be saved for all apps so thatit's avalable to the List iPad Apps command (see below.)
@@ -115,7 +116,7 @@ This command will copy the media files from the ApleTV.MediaFolder to the Infuse
 
 - If the Apple TV playlist is empty, abort with an error. 
 - First do a `compare` operation to get a data object showing which files need to be copied over and which need to be removed from the iPad. After listing the proposed changes, ask for confirmation before proceeding. If any playlist files are missing from the media Apple TV folder (see list-playlist command), show this in the confirmation also. 
-- If possible, calculate the total change in storage requirements on the iPad and confirm that it'll all fit after all delete and add operations are complete (use the `pymobiledevice3 apps afc` info command to get total free space.) Do not let the iPad storage drop below the iPad.MinimumFreeSpaceGB value (defaults to 1 Gb)
+- If possible, calculate the total change in storage requirements on the iPad and confirm that it'll all fit after all delete and add operations are complete (free space comes from the lockdown `com.apple.disk_usage` domain — `AmountDataAvailable`, the immediately-writable device-wide figure). Do not let the iPad storage drop below the iPad.MinimumFreeSpaceGB value (defaults to 1 Gb). Note: iOS *Settings > General > iPad Storage* usually shows a larger "Available" figure because it also counts reclaimable APFS purgeable storage, which Apple does not expose over lockdown/AFC — so the app's number is intentionally the conservative, guaranteed-writable one.
 - Show real progress as the copy progress, taking into account file sizes and projected total copy time.
 - Any files present on the iPad storage but not in the playlist are removed. 
 - Do delete operations before copy operations.

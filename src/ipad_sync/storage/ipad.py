@@ -20,9 +20,6 @@ if TYPE_CHECKING:
     from ipad_sync.device import IPadDevice
     from ipad_sync.storage.base import ProgressCallback
 
-# AFC GET_DEVINFO free-space keys, in order of preference.
-_FREE_SPACE_KEYS = ("FSFreeBytes", "FSFreeBlocks")
-
 # With ``documents_only`` House Arrest (VendDocuments), the AFC session is rooted
 # at the app container and only the ``Documents`` subtree is accessible; listing
 # "/" itself returns PERM_DENIED. All paths are therefore anchored here.
@@ -83,20 +80,18 @@ class IPadStorageManager(StorageManager):
                 items.append(MediaItem(rel_path=rel, size=info.st_size))
 
     def free_space_bytes(self) -> int:
-        """Return the iPad's free storage in bytes from AFC device info.
+        """Return the iPad's immediately-writable free storage in bytes.
+
+        Uses the device-wide lockdown ``disk_usage`` figure (the same value
+        reported during startup) so the ``to-ipad`` space-fit guard and the
+        startup report never disagree. This is the space available for transfers
+        right now; iOS *Settings* may show more because it counts reclaimable
+        purgeable storage that is not exposed here.
 
         Returns:
             The free space in bytes.
-
-        Raises:
-            RuntimeError: If AFC device info does not report a free-space value.
         """
-        info = self._device.afc_device_info()
-        for key in _FREE_SPACE_KEYS:
-            if key in info:
-                return int(info[key])
-        msg = f"AFC device info did not report free space; keys: {sorted(info)}"
-        raise RuntimeError(msg)
+        return self._device.disk_usage().available
 
     def push_file(
         self,

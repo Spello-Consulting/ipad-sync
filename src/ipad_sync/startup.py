@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ipad_sync.console import format_size
 from ipad_sync.device import DeviceError
 from ipad_sync.usb_speed import probe_usb_link_speed
 
@@ -37,6 +38,9 @@ class StartupResult:
         apps: All apps found on the iPad (empty in simulation mode).
         bundle_id: Resolved bundle id of the target iPad app, if known.
         playlist_exists: Whether the sync playlist already exists.
+        free_space_bytes: Immediately-writable free space on the iPad, or ``None``
+            when unknown (simulation mode, or the probe failed).
+        total_capacity_bytes: The iPad's total capacity, or ``None`` when unknown.
     """
 
     media_folder: Path
@@ -44,6 +48,8 @@ class StartupResult:
     apps: list[AppInfo] = field(default_factory=list)
     bundle_id: str | None = None
     playlist_exists: bool = False
+    free_space_bytes: int | None = None
+    total_capacity_bytes: int | None = None
 
 
 class StartupChecker:
@@ -108,6 +114,7 @@ class StartupChecker:
             self._check_usb()
             self._check_trust()
             self._check_usb_speed()
+            self._check_free_space(result)
             result.apps = self._load_apps()
             result.bundle_id = self._resolve_bundle_id(result.apps)
 
@@ -173,6 +180,33 @@ class StartupChecker:
             )
         else:
             self._info(f"USB link speed: {speed.summary}.")
+
+    def _check_free_space(self, result: StartupResult) -> None:
+        """Check 2c: report the iPad's free storage (informational).
+
+        Never aborts the run — an undeterminable figure is simply skipped. The
+        reported value is the space immediately available for transfers; iOS
+        *Settings* usually shows more because it also counts reclaimable APFS
+        purgeable storage, which is not exposed over lockdown (see
+        :class:`~ipad_sync.models.DiskUsage`).
+
+        Args:
+            result: The in-progress result to populate with the storage figures.
+        """
+        device = self._require_device()
+        try:
+            usage = device.disk_usage()
+        except DeviceError as exc:
+            self._info(f"iPad free space could not be determined: {exc} (skipping).")
+            return
+        result.free_space_bytes = usage.available
+        result.total_capacity_bytes = usage.total_capacity
+        self._info(
+            f"iPad storage: {format_size(usage.available)} free of "
+            f"{format_size(usage.total_capacity)}. "
+            "(iOS Settings may show more free space — it also counts reclaimable "
+            "'purgeable' storage that is not immediately available for transfers.)"
+        )
 
     def _check_media_folder(self) -> None:
         """Check 3: the media folder exists and is readable.

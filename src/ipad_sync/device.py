@@ -27,7 +27,7 @@ from pymobiledevice3.services.house_arrest import HouseArrestService
 from pymobiledevice3.services.installation_proxy import InstallationProxyService
 from pymobiledevice3.usbmux import list_devices
 
-from ipad_sync.models import AppInfo
+from ipad_sync.models import AppInfo, DiskUsage
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -180,6 +180,45 @@ class IPadDevice:
         apps.sort(key=lambda app: app.display_name.casefold())
         return apps
 
+    # -- device-wide storage ----------------------------------------------------
+
+    def disk_usage(self) -> DiskUsage:
+        """Return the iPad's device-wide storage figures from lockdown.
+
+        Reads the ``com.apple.disk_usage`` lockdown domain, which reports the
+        whole data volume (not an app sandbox) and is available as soon as
+        :meth:`connect` has run — i.e. during startup, before any House Arrest
+        session is opened.
+
+        ``AmountDataAvailable`` is the space immediately available for new data.
+        iOS *Settings* usually shows more free space because it also counts APFS
+        purgeable storage, which is not exposed here (see :class:`DiskUsage`).
+
+        Returns:
+            The device's total capacity and immediately-available free space.
+
+        Raises:
+            DeviceError: If not connected, the domain cannot be read, or the
+                expected keys are missing.
+        """
+        lockdown = self._require_lockdown()
+        try:
+            info = self._run(lockdown.get_value(domain="com.apple.disk_usage"))
+        except PyMobileDevice3Exception as exc:
+            msg = f"Could not read iPad disk usage: {exc}"
+            raise DeviceError(msg) from exc
+        if not isinstance(info, dict):
+            msg = "iPad disk usage was not reported by lockdown."
+            raise DeviceError(msg)
+        try:
+            return DiskUsage(
+                total_capacity=int(info["TotalDiskCapacity"]),
+                available=int(info["AmountDataAvailable"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            msg = f"iPad disk usage was incomplete; keys: {sorted(info)}"
+            raise DeviceError(msg) from exc
+
     # -- house arrest (Documents AFC) session ----------------------------------
 
     def open_documents(self, bundle_id: str) -> None:
@@ -240,14 +279,6 @@ class IPadDevice:
             The ``StatResult`` for the path.
         """
         return self._run(self._require_afc().os_stat(path))
-
-    def afc_device_info(self) -> dict[str, str]:
-        """Return the device filesystem info dict (includes free/total bytes).
-
-        Returns:
-            The AFC device-info mapping.
-        """
-        return self._run(self._require_afc().get_device_info())
 
     def afc_makedirs(self, path: str) -> None:
         """Recursively create a directory within Documents.

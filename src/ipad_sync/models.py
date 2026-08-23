@@ -12,6 +12,27 @@ from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
+class DiskUsage:
+    """The iPad's device-wide storage figures, from lockdown ``disk_usage``.
+
+    ``available`` is the space that is *immediately* writable. iOS *Settings*
+    typically reports a larger "Available" figure because it also counts APFS
+    purgeable storage (evictable caches, offloaded apps, non-pinned iCloud files)
+    that the OS reclaims on demand; that purgeable amount is not exposed over
+    lockdown or AFC, so this value is intentionally the conservative one.
+
+    Attributes:
+        total_capacity: The device's nominal total capacity in bytes
+            (``TotalDiskCapacity``, e.g. 256 GB).
+        available: Bytes immediately available for new data
+            (``AmountDataAvailable``).
+    """
+
+    total_capacity: int
+    available: int
+
+
+@dataclass(frozen=True)
 class AppInfo:
     """Describes a single application installed on the iPad.
 

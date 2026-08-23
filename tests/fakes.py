@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ipad_sync.device import DeviceError
+from ipad_sync.models import DiskUsage
 
 if TYPE_CHECKING:
     from ipad_sync.models import AppInfo, MediaItem
@@ -24,11 +25,20 @@ class FakeDevice:
         apps: list[AppInfo] | None = None,
         connect_error: str | None = None,
         list_apps_error: str | None = None,
+        disk_usage: DiskUsage | None = None,
+        disk_usage_error: str | None = None,
     ) -> None:
         self._serials = serials if serials is not None else ["FAKESERIAL123"]
         self._apps = apps if apps is not None else []
         self._connect_error = connect_error
         self._list_apps_error = list_apps_error
+        self._disk_usage = (
+            disk_usage
+            if disk_usage is not None
+            # ~8.8 GiB free of a 256 GB device, mirroring the real iPad.
+            else DiskUsage(total_capacity=256_000_000_000, available=9_529_348_096)
+        )
+        self._disk_usage_error = disk_usage_error
         self.connected = False
         self.closed = False
 
@@ -44,6 +54,11 @@ class FakeDevice:
         if self._list_apps_error is not None:
             raise DeviceError(self._list_apps_error)
         return self._apps
+
+    def disk_usage(self) -> DiskUsage:
+        if self._disk_usage_error is not None:
+            raise DeviceError(self._disk_usage_error)
+        return self._disk_usage
 
     def close(self) -> None:
         self.closed = True

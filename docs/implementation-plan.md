@@ -38,7 +38,7 @@ version (`>=10.10.0`) every device operation is a coroutine:
 | Vend Infuse Documents | `await HouseArrestService.create(lockdown, bundle_id, documents_only=True)` |
 | List dir | `await afc.listdir(path)` |
 | Stat | `await afc.os_stat(path)` → `StatResult` NamedTuple |
-| Free space | `await afc.get_device_info()` → dict of byte counts |
+| Free space | `await lockdown.get_value(domain="com.apple.disk_usage")` → `AmountDataAvailable` (device-wide, immediately-writable free space). Note: iOS *Settings* shows more because it also counts reclaimable APFS purgeable storage, which no lockdown/AFC key exposes. |
 | Copy up / down | `await afc.push(local, remote)` / `await afc.pull(remote, local)` |
 | Delete | `await afc.rm(path, force=True)` |
 | Make dirs | `await afc.makedirs(path)` |
