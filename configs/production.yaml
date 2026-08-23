@@ -1,31 +1,25 @@
-# Production configuration file for the Tool to sync an Apple TV playlist to the Infuse app application.
+# Development configuration file for the Tool to sync an Apple TV playlist to the Infuse app application.
 
 General:
   AppName: ipad-sync
-  CheckInterval: 30
+  # Set SimulationMode: True to run against a local folder instead of an iPad.
   SimulationMode: False
+  # Local directory used as the stand-in Documents folder when simulating.
+  # SimulationRoot: /tmp/ipad-sync-sim
 
 Files:
   LogfileName: logs/logfile.log
   LogfileMaxLines: 10000
   LogProcessID: False
-  LogfileVerbosity: detailed
-  ConsoleVerbosity: detailed
-
-Email:
-  EnableEmail: True
-  SubjectPrefix: "[ipad-sync]: "
-
-HeartbeatMonitor:
-  Enable: False
-  WebsiteURL:
-  HeartbeatTimeout: 5
+  LogfileVerbosity: debug
+  ConsoleVerbosity: debug
 
 AppleTV:
   Playlist: "iPad Sync"
-  MediaFolder: "/Volumes/Data_Mobile/Multimedia/Video"
+  MediaFolder: "/Volumes/Data_IT/Multimedia/Video"
 
 iPad:
   AppName: "Infuse"
+  # Optional: pin the bundle id to skip display-name lookup (e.g. com.firecore.infuse).
   # BundleID: "com.firecore.infuse"
   MinimumFreeSpaceGB: 1

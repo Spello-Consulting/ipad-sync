@@ -23,3 +23,4 @@ logs/
 .env.target
 tests/.env.test
 *_fatal_error.txt
+ipad-sync-sim

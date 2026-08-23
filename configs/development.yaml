@@ -5,7 +5,7 @@ General:
   # Set SimulationMode: True to run against a local folder instead of an iPad.
   SimulationMode: False
   # Local directory used as the stand-in Documents folder when simulating.
-  # SimulationRoot: /tmp/ipad-sync-sim
+  SimulationRoot: ipad-sync-sim
 
 Files:
   LogfileName: logs/logfile.log
