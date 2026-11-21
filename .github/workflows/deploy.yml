@@ -10,7 +10,7 @@ on:
         options:
           - MacMiniIT
           - MacMiniAU
-          - both
+          - all
 
 jobs:
   deploy:
@@ -19,7 +19,7 @@ jobs:
     environment: ${{ matrix.environment }}
     strategy:
       matrix:
-        environment: ${{ fromJSON(inputs.environment == 'both' && '["MacMiniIT","MacMiniAU"]' || format('["{0}"]', inputs.environment)) }}
+        environment: ${{ fromJSON(inputs.environment == 'all' && '["MacMiniIT","MacMiniAU"]' || format('["{0}"]', inputs.environment)) }}
     steps:
       - name: Pull latest from GitHub
         env:
