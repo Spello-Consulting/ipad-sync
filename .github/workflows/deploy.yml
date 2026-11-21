@@ -1,0 +1,29 @@
+name: Deploy ipad-sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - MacMiniIT
+          - MacMiniAU
+          - both
+
+jobs:
+  deploy:
+    name: Deploy → ${{ matrix.environment }}
+    runs-on: [self-hosted, "${{ matrix.environment }}"]
+    environment: ${{ matrix.environment }}
+    strategy:
+      matrix:
+        environment: ${{ fromJSON(inputs.environment == 'both' && '["MacMiniIT","MacMiniAU"]' || format('["{0}"]', inputs.environment)) }}
+    steps:
+      - name: Pull latest from GitHub
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          cd ~/scripts/ipad-sync 
+          ~/scripts/pyutil/gitrefresh.sh --yes --branch "$BRANCH"
